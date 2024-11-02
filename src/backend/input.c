@@ -1,5 +1,6 @@
 #include "input.h"
 #include "userSettings.h"
+#include <3ds.h>
 
 #define KEYDEF(keycode) \
   (Mapping_t){\
@@ -26,7 +27,10 @@ static const char* mappingStrings[2][NUM_INPUTS] = {
 };
 
 bool Input_Init() {
-  return false;
+  this.gamepadID[0] = -1; // why -1 if this is an unsigned int?
+  this.gamepadID[1] = -1;
+  this.inputEnabled = true;
+  return true;
 }
 
 
@@ -35,6 +39,27 @@ void Input_Cleanup() {
 
 
 void Input_Update() {
+  printf("chb? %08X inpe? %d\n", Input_GetChangedButtons(0), this.inputEnabled);
+  if (this.inputEnabled) {
+    if (Input_GetChangedButtons(0)) {
+      Controller_UpdateButtons(0, this.curr[0]);
+      printf("Called Input_Update() %08X\n", this.curr[0]);
+    }
+  }
+
+  this.prev[0] = this.curr[0];
+
+  u32 kHeld = hidKeysHeld();
+  uint32_t buttons = 0;
+
+  if (kHeld & KEY_UP) buttons |= (1 << INPUT_UP);
+  if (kHeld & KEY_DOWN) buttons |= (1 << INPUT_DOWN);
+  if (kHeld & KEY_LEFT) buttons |= (1 << INPUT_LEFT);
+  if (kHeld & KEY_RIGHT) buttons |= (1 << INPUT_RIGHT);
+  if (kHeld & KEY_X) buttons |= (1 << INPUT_ENTER);
+
+  this.curr[0] = buttons;
+  printf("w? %08X %08X %08X %08X\n", buttons, this.curr[0], this.prev[0], Input_GetChangedButtons(0));
 }
 
 

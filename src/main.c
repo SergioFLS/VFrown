@@ -30,11 +30,11 @@ int main(int argc, char* argv[])
 {
 	gfxInitDefault();
 	consoleInit(GFX_TOP, NULL);
-	VSmile_Error("VSmile_Error test");
 	// Emulator core
 	if (!VSmile_Init()) {
 		VSmile_Error("Failed to initialize emulation core");
 	}
+	Input_Init();
 
 	VSmile_LoadSysRom("/vfrown/sysrom/sysrom.bin");
 
@@ -60,12 +60,14 @@ int main(int argc, char* argv[])
 		hidScanInput();
 
 		// Your code goes here
+		Input_Update();
 		VSmile_RunFrame();
 		u32 kDown = hidKeysDown();
 		if (kDown & KEY_START)
 			break; // break in order to return to hbmenu
 	}
 
+	Input_Cleanup();
 	gfxExit();
 	return 0;
 }
