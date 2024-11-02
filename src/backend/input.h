@@ -51,7 +51,7 @@ void Input_Update();
 uint32_t Input_GetChangedButtons(uint8_t ctrlNum);
 void Input_SetControlsEnable(bool isEnabled);
 
-void Input_KeyboardMouseEvent(sapp_event* event);
+void Input_KeyboardMouseEvent(void* event);
 
 void Input_SaveMappings();
 

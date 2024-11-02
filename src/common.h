@@ -35,10 +35,10 @@
 
 
 enum {
-  LED_GREEN,
-  LED_BLUE,
-  LED_YELLOW,
-  LED_RED
+  VF_LED_GREEN,
+  VF_LED_BLUE,
+  VF_LED_YELLOW,
+  VF_LED_RED
 };
 
 

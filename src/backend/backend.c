@@ -1,170 +1,19 @@
 #include "backend.h"
 #include "font.xpm" // TODO: remove
-#include "lib/tinyfiledialogs.h"
 #include "userSettings.h"
 
 static Backend_t this;
 
 bool Backend_Init() {
-  memset(&this, 0, sizeof(Backend_t));
-
-  this.samplesEmpty = true;
-
-  // Sokol GFX
-  sg_desc sgDesc = {
-    .context = sapp_sgcontext()
-  };
-  sg_setup(&sgDesc);
-  if (!sg_isvalid()) {
-    VSmile_Error("Failed to create Sokol GFX context\n");
-    return false;
-  }
-
-  // Sokol GL
-  sgl_setup(&(sgl_desc_t){
-    .face_winding = SG_FACEWINDING_CW,
-    .max_vertices = 4*64*1024,
-  });
-
-  // Create GPU-side textures for rendering emulated frame
-  sg_image_desc imgDesc = {
-    .width        = 320,
-    .height       = 240,
-    // .min_filter   = SG_FILTER_LINEAR,
-    // .mag_filter   = SG_FILTER_LINEAR,
-    .usage        = SG_USAGE_DYNAMIC,
-    .pixel_format = SG_PIXELFORMAT_RGBA8
-  };
-  this.screenTexture = sg_make_image(&imgDesc);
-
-  this.samplers[SCREENFILTER_NEAREST] = sg_make_sampler(&(sg_sampler_desc){
-    .min_filter = SG_FILTER_NEAREST,
-    .mag_filter = SG_FILTER_NEAREST,
-  });
-
-  this.samplers[SCREENFILTER_LINEAR] = sg_make_sampler(&(sg_sampler_desc){
-    .min_filter = SG_FILTER_LINEAR,
-    .mag_filter = SG_FILTER_LINEAR,
-  });
-
-  // Create and load pipeline
-  this.pipeline = sgl_make_pipeline(&(sg_pipeline_desc){
-    .colors[0].blend = {
-      .enabled          = true,
-      .src_factor_rgb   = SG_BLENDFACTOR_SRC_ALPHA,
-      .dst_factor_rgb   = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-      .op_rgb           = SG_BLENDOP_ADD,
-      .src_factor_alpha = SG_BLENDFACTOR_ONE,
-      .dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-      .op_alpha         = SG_BLENDOP_ADD
-    }
-  });
-
-  // Sokol audio
-  saudio_setup(&(saudio_desc){
-    .sample_rate  = OUTPUT_FREQUENCY,
-    .num_channels = 2,
-    .stream_cb = Backend_AudioCallback,
-  });
-  saudio_sample_rate();
-  saudio_channels();
-
-  this.saveFile = NULL;
-
-  this.emulationSpeed = 1.0f;
-  this.controlsEnabled = true;
-  this.currButtons = 0;
-  this.prevButtons = 0;
-
-  if (!UserSettings_Init()) return false;
-
-  return true;
+  return false;
 }
 
 
 void Backend_Cleanup() {
-  UserSettings_Cleanup();
-
-  saudio_shutdown();
 }
 
 
 void Backend_Update() {
-  // if (this.controlsEnabled) {
-  //   if (Backend_GetChangedButtons())
-  //     Controller_UpdateButtons(0, this.currButtons);
-  //   this.prevButtons = this.currButtons;
-  // }
-
-  // Update screen texture
-  sg_image_data imageData;
-  imageData.subimage[0][0].ptr  = PPU_GetPixelBuffer();
-  imageData.subimage[0][0].size = 320*240*sizeof(uint32_t);
-  sg_update_image(this.screenTexture, &imageData);
-
-  const float width  = sapp_widthf();
-  const float height = sapp_heightf();
-
-  // Begin render pass
-  const sg_pass_action defaultPass = {
-    .colors[0] = {
-      .load_action  = SG_LOADACTION_CLEAR,
-      .store_action = SG_STOREACTION_DONTCARE,
-      .clear_value  = { 0.0f, 0.0f, 0.0f, 1.0f }
-    }
-  };
-
-  UI_StartFrame();
-
-  sg_begin_default_pass(&defaultPass, width, height);
-
-  // Draw emulated frame to window
-  sgl_defaults();
-  sgl_load_pipeline(this.pipeline);
-  sgl_enable_texture();
-  sgl_texture(this.screenTexture, this.samplers[this.currScreenFilter]);
-  sgl_matrix_mode_projection();
-  sgl_push_matrix();
-  sgl_ortho(0.0f, width, height, 0.0f, -1.0f, 1.0f);
-  sgl_begin_quads();
-
-  sgl_c1i(0xffffffff);
-
-  if (this.keepAspectRatio) {
-
-    float outHeight = ((int)(height/240))*240.0f; // Get first integer multiple of height
-    float outWidth  = outHeight*(4.0f/3.0f); // Maintain 4:3 aspect ratio
-
-    sgl_v2f_t2f(width*0.5f-(outWidth*0.5f), height*0.5f-(outHeight*0.5f), 0.0f, 0.0f);
-    sgl_v2f_t2f(width*0.5f+(outWidth*0.5f), height*0.5f-(outHeight*0.5f), 1.0f, 0.0f);
-    sgl_v2f_t2f(width*0.5f+(outWidth*0.5f), height*0.5f+(outHeight*0.5f), 1.0f, 1.0f);
-    sgl_v2f_t2f(width*0.5f-(outWidth*0.5f), height*0.5f+(outHeight*0.5f), 0.0f, 1.0f);
-
-  } else {
-
-    sgl_v2f_t2f(0,      0,      0.0f, 0.0f);
-    sgl_v2f_t2f(width,  0,      1.0f, 0.0f);
-    sgl_v2f_t2f(width,  height, 1.0f, 1.0f);
-    sgl_v2f_t2f(0,      height, 0.0f, 1.0f);
-
-  }
-
-  sgl_end();
-  sgl_draw();
-  sgl_pop_matrix();
-
-  UI_RunFrame();
-
-  // End rendering
-  UI_Render();
-  sg_end_pass();
-  sg_commit();
-
-  // if (this.oscilloscopeEnabled) {
-  //   memset(this.pixelBuffer, 0, 320*240*sizeof(uint32_t));
-  //   for (int32_t i = 0; i < 16; i++)
-  //     this.currSampleX[i] = 0;
-  // }
 }
 
 
@@ -200,15 +49,11 @@ void Backend_GetFileName(const char* path) {
 
 
 const char* Backend_OpenFileDialog(const char* title) {
-  return tinyfd_openFileDialog(
-  	title,
-  	NULL, 0, 0, NULL, 0
-  );
+  return "";
 }
 
 
 void Backend_OpenMessageBox(const char* title, const char* message) {
-  tinyfd_messageBox(title, message, NULL, NULL, 0);
 }
 
 
@@ -351,28 +196,28 @@ void Backend_RenderLeds() {
 
   uint8_t alpha = 128;
 
-  if (this.currLed & (1 << LED_RED))
+  if (this.currLed & (1 << VF_LED_RED))
     Backend_SetDrawColor(255, 0, 0, alpha);
   else
     Backend_SetDrawColor(0, 0, 0, alpha);
 
   Backend_DrawCircle(16, 224, 10);
 
-  if (this.currLed & (1 << LED_YELLOW))
+  if (this.currLed & (1 << VF_LED_YELLOW))
     Backend_SetDrawColor(255, 255, 0, alpha);
   else
     Backend_SetDrawColor(0, 0, 0, alpha);
 
   Backend_DrawCircle(46, 224, 10);
 
-  if (this.currLed & (1 << LED_BLUE))
+  if (this.currLed & (1 << VF_LED_BLUE))
     Backend_SetDrawColor(0, 0, 255, alpha);
   else
     Backend_SetDrawColor(0, 0, 0, alpha);
 
   Backend_DrawCircle(76, 224, 10);
 
-  if (this.currLed & (1 << LED_GREEN))
+  if (this.currLed & (1 << VF_LED_GREEN))
     Backend_SetDrawColor(0, 255, 0, alpha);
   else
     Backend_SetDrawColor(0, 0, 0, alpha);
@@ -538,57 +383,6 @@ void Backend_SetScreenFilter(uint8_t filterMode) {
 
 
 void Backend_HandleInput(int32_t keycode, int32_t eventType) {
-  if (eventType == SAPP_EVENTTYPE_KEY_DOWN) {
-    switch (keycode) {
-    // case SAPP_KEYCODE_1: PPU_ToggleLayer(0); break;
-    // case SAPP_KEYCODE_2: PPU_ToggleLayer(1); break;
-    // case SAPP_KEYCODE_3: PPU_ToggleLayer(2); break;
-
-    case SAPP_KEYCODE_ESCAPE: sapp_request_quit(); break;
-    case SAPP_KEYCODE_Y: sapp_toggle_fullscreen(); break;
-    case SAPP_KEYCODE_R: VSmile_Reset(); break;
-    case SAPP_KEYCODE_U: UI_Toggle(); break;
-    case SAPP_KEYCODE_O: VSmile_Step(); break;
-    case SAPP_KEYCODE_P: VSmile_SetPause(!VSmile_GetPaused()); break;
-
-    case SAPP_KEYCODE_J:
-      if (this.title[0])
-        Backend_SaveState();
-      break;
-    case SAPP_KEYCODE_K:
-      if (this.title[0])
-        Backend_LoadState();
-      break;
-
-    // case SAPP_KEYCODE_UP:    this.currButtons |= (1 << INPUT_UP);     break;
-    // case SAPP_KEYCODE_DOWN:  this.currButtons |= (1 << INPUT_DOWN);   break;
-    // case SAPP_KEYCODE_LEFT:  this.currButtons |= (1 << INPUT_LEFT);   break;
-    // case SAPP_KEYCODE_RIGHT: this.currButtons |= (1 << INPUT_RIGHT);  break;
-    // case SAPP_KEYCODE_SPACE: this.currButtons |= (1 << INPUT_ENTER);  break;
-    // case SAPP_KEYCODE_Z:     this.currButtons |= (1 << INPUT_RED);    break;
-    // case SAPP_KEYCODE_X:     this.currButtons |= (1 << INPUT_YELLOW); break;
-    // case SAPP_KEYCODE_V:     this.currButtons |= (1 << INPUT_BLUE);   break;
-    // case SAPP_KEYCODE_C:     this.currButtons |= (1 << INPUT_GREEN);  break;
-    // case SAPP_KEYCODE_A:     this.currButtons |= (1 << INPUT_HELP);   break;
-    // case SAPP_KEYCODE_S:     this.currButtons |= (1 << INPUT_EXIT);   break;
-    // case SAPP_KEYCODE_D:     this.currButtons |= (1 << INPUT_ABC);    break;
-    }
-  } else if (eventType == SAPP_EVENTTYPE_KEY_UP){
-    // switch (keycode) {
-    // case SAPP_KEYCODE_UP:    this.currButtons &= ~(1 << INPUT_UP);     break;
-    // case SAPP_KEYCODE_DOWN:  this.currButtons &= ~(1 << INPUT_DOWN);   break;
-    // case SAPP_KEYCODE_LEFT:  this.currButtons &= ~(1 << INPUT_LEFT);   break;
-    // case SAPP_KEYCODE_RIGHT: this.currButtons &= ~(1 << INPUT_RIGHT);  break;
-    // case SAPP_KEYCODE_SPACE: this.currButtons &= ~(1 << INPUT_ENTER);  break;
-    // case SAPP_KEYCODE_Z:     this.currButtons &= ~(1 << INPUT_RED);    break;
-    // case SAPP_KEYCODE_X:     this.currButtons &= ~(1 << INPUT_YELLOW); break;
-    // case SAPP_KEYCODE_V:     this.currButtons &= ~(1 << INPUT_BLUE);   break;
-    // case SAPP_KEYCODE_C:     this.currButtons &= ~(1 << INPUT_GREEN);  break;
-    // case SAPP_KEYCODE_A:     this.currButtons &= ~(1 << INPUT_HELP);   break;
-    // case SAPP_KEYCODE_S:     this.currButtons &= ~(1 << INPUT_EXIT);   break;
-    // case SAPP_KEYCODE_D:     this.currButtons &= ~(1 << INPUT_ABC);    break;
-    // }
-  }
 }
 
 

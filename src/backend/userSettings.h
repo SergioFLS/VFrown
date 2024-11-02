@@ -5,10 +5,9 @@
 #include "../core/vsmile.h"
 #include "backend.h"
 #include "libs.h"
-#include "lib/ini.h"
 
 typedef struct {
-  ini_t* ini;
+  void* ini;
 } UserSettings_t;
 
 bool UserSettings_Init();

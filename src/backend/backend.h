@@ -4,10 +4,7 @@
 #include "../common.h"
 #include "../core/vsmile.h"
 #include "libs.h"
-#include "lib/sokol_gfx.h"
-#include "lib/sokol_gl.h"
 
-#include "ui.h"
 #include "userSettings.h"
 
 #define MAX_SAMPLES 65536
@@ -19,10 +16,10 @@ enum {
 };
 
 typedef struct {
-  sgl_context  context;
-  sgl_pipeline pipeline;
-  sg_image     screenTexture;
-  sg_sampler   samplers[NUM_SCREENFILTERS];
+  void* context;
+  void* pipeline;
+  void* screenTexture;
+  void* samplers[NUM_SCREENFILTERS];
 
   FILE* saveFile;
 

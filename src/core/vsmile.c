@@ -175,7 +175,7 @@ void VSmile_Error(const char* message, ...) {
 
     printf("\x1b[31m[ERROR]\x1b[0m %s\n", buffer);
     // CPU_PrintCPUState();
-    Backend_OpenMessageBox("Fatal Emulation Error", (const char*)&buffer);
+    //Backend_OpenMessageBox("Fatal Emulation Error", (const char*)&buffer);
   }
 
   this.isHalted = true;

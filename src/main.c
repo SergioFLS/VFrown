@@ -1,129 +1,71 @@
-#include "main.h"
-#include "backend/input.h"
-#include "backend/ui.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <3ds.h>
 
-static float speed;
-static char romPath[1024];
-static char sysromPath[1024];
+#include "core/vsmile.h"
 
-// Called when the application is initializing.
-static void initFunc() {
-  speed = 0.0f;
-
-  if (!Backend_Init()) {
-    VSmile_Error("Failed to initialize backend");
-  }
-
-  if (!Input_Init()) {
-    VSmile_Error("Failed to initialize input handler");
-  }
-
-  // Emulator core
-  if (!VSmile_Init()) {
-    VSmile_Error("Failed to initialize emulation core");
-  }
-
-  if (sysromPath[0] != '\0')
-    VSmile_LoadSysRom((const char*)&sysromPath);
-  else
-    VSmile_LoadSysRom("sysrom/sysrom.bin");
-
-
-  if (romPath[0] != '\0') {
-    VSmile_LoadROM((const char*)&romPath);
-    VSmile_SetPause(false);
-  } else {
-    VSmile_SetPause(true);
-  }
-
-  VSmile_SetRegion(0xf);
-  VSmile_SetIntroEnable(true);
-
-  VSmile_Reset();
-
-  if (!UI_Init()) {
-    VSmile_Error("Failed to create UI handler");
-  }
-
+static inline size_t xy2index_native(unsigned int x, unsigned int y) {
+	return x+(y*240);
 }
 
-
-// Called on every frame of the application.
-static void frameFunc() {
-  Input_Update();
-
-  float systemSpeed = Backend_GetSpeed();
-  speed += systemSpeed;
-  if (speed >= 1.0f) {
-    systemSpeed = 1.0f / systemSpeed;
-    while (speed > 0.0f) {
-      VSmile_RunFrame();
-      speed -= systemSpeed;
-    }
-  }
-
-  Backend_Update();
+static inline size_t xy2index_rotated(unsigned int x, unsigned int y) {
+	return (320*((240-1)-x))+y;
 }
 
-
-// Called when the application is shutting down
-static void cleanupFunc() {
-  UI_Cleanup();
-  VSmile_Cleanup();
-  Input_Cleanup();
-  Backend_Cleanup();
-
-  sg_shutdown();
+static void copyscreen(u8* dest, uint32_t* src) {
+	for (size_t y = 0; y < 320; y++)
+	{
+		for (size_t x = 0; x < 240; x++)
+		{
+			dest[(xy2index_native(x, y)*3)+0] = (src[xy2index_rotated(x, y)] & 0x00FF0000) >> 16;
+			dest[(xy2index_native(x, y)*3)+1] = (src[xy2index_rotated(x, y)] & 0x0000FF00) >> 8;
+			dest[(xy2index_native(x, y)*3)+2] = (src[xy2index_rotated(x, y)] & 0x000000FF);
+		}
+		
+	}	
 }
 
+int main(int argc, char* argv[])
+{
+	gfxInitDefault();
+	consoleInit(GFX_TOP, NULL);
+	VSmile_Error("VSmile_Error test");
+	// Emulator core
+	if (!VSmile_Init()) {
+		VSmile_Error("Failed to initialize emulation core");
+	}
 
-// Called when an event (keypress, mouse movement, etc.) occurs
-static void eventFunc(sapp_event* event) {
-  UI_HandleEvent(event);
-  Backend_HandleInput(event->key_code, event->type);
-  Input_KeyboardMouseEvent(event);
+	VSmile_LoadSysRom("/vfrown/sysrom/sysrom.bin");
 
-  // TODO: move this to the backend
-  if (event->type == SAPP_EVENTTYPE_FILES_DROPPED) {
-    const int32_t numFiles = sapp_get_num_dropped_files();
+	VSmile_LoadROM("/vfrown/abcpark.bin");
+	VSmile_SetPause(false);
+	VSmile_SetRegion(0xf);
+	VSmile_SetIntroEnable(true);
 
-    VSmile_LoadROM(sapp_get_dropped_file_path(0));
-    if (numFiles == 2)
-      VSmile_LoadSysRom(sapp_get_dropped_file_path(1));
-    VSmile_Reset();
-    VSmile_SetPause(false);
-  }
-}
+	VSmile_Reset();
 
-// Platform-agnostic main from sokol_app.h
-sapp_desc sokol_main(int argc, char* argv[]) {
-  romPath[0] = '\0';
-  sysromPath[0] = '\0';
+	printf("vforwn\n");
 
-  if (argc == 2) {
-    strncpy((char*)&romPath, argv[1], 1024);
-    romPath[1023] = '\0';
-  }
-  else if (argc == 3) {
-    strncpy((char*)&sysromPath, argv[1], 1024);
-    strncpy((char*)&romPath, argv[2], 1024);
-    sysromPath[1023] = '\0';
-    romPath[1023] = '\0';
-  }
+	// Main loop
+	while (aptMainLoop())
+	{
+		u8* fb = gfxGetFramebuffer(GFX_BOTTOM, GFX_LEFT, NULL, NULL);
 
-  sapp_desc desc = {
-    .init_cb = initFunc,
-    .frame_cb = frameFunc,
-    .cleanup_cb = cleanupFunc,
-    .event_cb = (void(*)(const sapp_event*))eventFunc,
-    .width = 640,
-    .height = 480,
-    .window_title = "V.Frown",
-    .enable_dragndrop = true,
-    .max_dropped_files = 2,
-    .sample_count = 1,
-    .high_dpi=false
-  };
+		copyscreen(fb, PPU_GetPixelBuffer());
 
-  return desc;
+		gspWaitForVBlank();
+		gfxFlushBuffers();
+		gfxSwapBuffers();
+		hidScanInput();
+
+		// Your code goes here
+		VSmile_RunFrame();
+		u32 kDown = hidKeysDown();
+		if (kDown & KEY_START)
+			break; // break in order to return to hbmenu
+	}
+
+	gfxExit();
+	return 0;
 }
